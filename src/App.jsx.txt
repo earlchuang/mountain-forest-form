@@ -1,0 +1,587 @@
+import React, { useState, useEffect } from 'react';
+
+const STORAGE_KEY = 'mountain_forest_form_v2';
+const DRAFT_KEY = 'mountain_forest_draft_v2';
+const API_ENDPOINT = null; // 部署到 Vercel 後改成 Webhook URL
+
+const EMPTY_ITEM = {
+  name: '',
+  costPrice: '',
+  retailPrice: '',
+  unit: '',
+  photo: '',
+  hasExp: '',
+  retLimit: '',
+  priceAdjust: '',
+};
+
+function App() {
+  const [step, setStep] = useState(0);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [form, setForm] = useState({
+    s1_duration: '',
+    s1_name: '',
+    s1_taxid: '',
+    s1_owner: '',
+    s1_contact: '',
+    s1_phone: '',
+    s1_line: '',
+    s1_email: '',
+    s1_zip: '',
+    s1_addr: '',
+    s2_type: '',
+    s2_taxid: '',
+    s3_bank: '',
+    s3_branch: '',
+    s3_acct: '',
+    s3_holder: '',
+    s3_passbook: '',
+    s4_brand: '',
+    s4_mission: '',
+    s4_feature: '',
+    s4_web: '',
+    s4_fb: '',
+    s4_ig: '',
+    s5_items: Array(20).fill(null).map(() => ({ ...EMPTY_ITEM })),
+    s6_owner: '',
+    s6_company: '',
+    s6_agree: false,
+  });
+
+  useEffect(() => {
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) {
+      try {
+        const draft = JSON.parse(saved);
+        setForm(draft);
+        setShowRecovery(true);
+      } catch (e) {
+        console.error('草稿載入失敗:', e);
+      }
+    }
+  }, []);
+
+  const saveDraft = () => {
+    if (step !== 0 && step !== 8) {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(form));
+    }
+  };
+
+  useEffect(() => {
+    saveDraft();
+  }, [form, step]);
+
+  const handleFieldChange = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleItemChange = (index, field, value) => {
+    const newItems = [...form.s5_items];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setForm(prev => ({ ...prev, s5_items: newItems }));
+  };
+
+  const handlePhotoUpload = (index, file) => {
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        handleItemChange(index, 'photo', reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePassbookUpload = (file) => {
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setForm(prev => ({ ...prev, s3_passbook: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const validateStep = () => {
+    switch (step) {
+      case 1:
+        if (!form.s1_name || !form.s1_phone || !form.s1_email) {
+          alert('請填寫必填欄位');
+          return false;
+        }
+        if (form.s1_phone.replace(/\D/g, '').length !== 10) {
+          alert('電話號碼必須是 10 位數字');
+          return false;
+        }
+        return true;
+      case 3:
+        if (!form.s3_bank || !form.s3_acct || !form.s3_holder) {
+          alert('請填寫銀行資訊');
+          return false;
+        }
+        return true;
+      case 5:
+        const filledItems = form.s5_items.filter(item => item.name && item.costPrice && item.retailPrice);
+        if (filledItems.length === 0) {
+          alert('請至少新增一項商品');
+          return false;
+        }
+        for (const item of filledItems) {
+          const cost = parseFloat(item.costPrice);
+          const retail = parseFloat(item.retailPrice);
+          if (retail <= cost) {
+            alert(`${item.name} 的零售價必須大於進貨價`);
+            return false;
+          }
+        }
+        return true;
+      case 6:
+        if (!form.s6_owner || !form.s6_company) {
+          alert('請填寫切結人資訊');
+          return false;
+        }
+        return true;
+      case 7:
+        if (!form.s6_agree) {
+          alert('請同意所有條款');
+          return false;
+        }
+        return true;
+      default:
+        return true;
+    }
+  };
+
+  const handleNext = () => {
+    if (validateStep()) {
+      setStep(step + 1);
+      window.scrollTo(0, 0);
+    }
+  };
+
+  const handlePrev = () => {
+    if (step > 0) setStep(step - 1);
+    window.scrollTo(0, 0);
+  };
+
+  const handleRecoverDraft = () => {
+    setShowRecovery(false);
+  };
+
+  const handleDiscardDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setShowRecovery(false);
+    setForm({
+      s1_duration: '', s1_name: '', s1_taxid: '', s1_owner: '', s1_contact: '',
+      s1_phone: '', s1_line: '', s1_email: '', s1_zip: '', s1_addr: '',
+      s2_type: '', s2_taxid: '',
+      s3_bank: '', s3_branch: '', s3_acct: '', s3_holder: '', s3_passbook: '',
+      s4_brand: '', s4_mission: '', s4_feature: '', s4_web: '', s4_fb: '', s4_ig: '',
+      s5_items: Array(20).fill(null).map(() => ({ ...EMPTY_ITEM })),
+      s6_owner: '', s6_company: '', s6_agree: false,
+    });
+  };
+
+  const downloadCSV = () => {
+    const filledItems = form.s5_items.filter(item => item.name);
+    const headers = [
+      '廠商名稱', '統編', '進駐模式', '負責人', '聯絡人', '電話', 'Email',
+      ...filledItems.flatMap((_, i) => [
+        `商品${i + 1}名稱`, `商品${i + 1}進貨價`, `商品${i + 1}零售價`,
+        `商品${i + 1}單位`, `商品${i + 1}有效期`, `商品${i + 1}同意調價`
+      ])
+    ];
+
+    const values = [
+      form.s1_name, form.s1_taxid, form.s1_duration, form.s1_owner, form.s1_contact,
+      form.s1_phone, form.s1_email,
+      ...filledItems.flatMap(item => [
+        item.name, item.costPrice, item.retailPrice, item.unit, item.hasExp, item.priceAdjust
+      ])
+    ];
+
+    const csv = [
+      headers.join(','),
+      values.map(v => `"${v || ''}"`).join(',')
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${form.s1_name}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  const handleSubmit = async () => {
+    if (!form.s6_agree) {
+      alert('請同意所有條款');
+      return;
+    }
+
+    const payload = {
+      form,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      if (API_ENDPOINT) {
+        const response = await fetch(API_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) throw new Error('發送失敗');
+        alert('✓ 資料已送出！');
+      } else {
+        alert('✓ 資料已保存！\n\n提示：此表單未連接到自動同步服務。\n您可以點擊「下載 CSV」匯出資料。');
+      }
+
+      localStorage.removeItem(DRAFT_KEY);
+      setStep(8);
+    } catch (error) {
+      alert(`發送失敗: ${error.message}`);
+    }
+  };
+
+  return (
+    <div style={styles.container}>
+      <header style={styles.header}>
+        <div style={styles.logo}>🌲 山林製造 × 啄木鳥森林</div>
+        <h1>廠商寄售資料表</h1>
+      </header>
+
+      {showRecovery && step === 0 && (
+        <div style={styles.recovery}>
+          <p>發現未完成的草稿，要繼續填寫嗎？</p>
+          <button onClick={handleRecoverDraft} style={{ ...styles.btn, ...styles.btnPrimary }}>
+            繼續填寫
+          </button>
+          <button onClick={handleDiscardDraft} style={styles.btn}>
+            重新開始
+          </button>
+        </div>
+      )}
+
+      {step === 0 && (
+        <div style={styles.intro}>
+          <h2>歡迎</h2>
+          <p>感謝您的寄售合作意願。</p>
+          <p>本表單分為 7 個部分，預計 10-15 分鐘完成。</p>
+          <button onClick={() => setStep(1)} style={{ ...styles.btn, ...styles.btnPrimary }}>
+            開始填寫
+          </button>
+        </div>
+      )}
+
+      {step === 1 && (
+        <div style={styles.section}>
+          <h2>基本資訊</h2>
+          <div style={styles.formGroup}>
+            <label>進駐模式 *</label>
+            <select value={form.s1_duration} onChange={e => handleFieldChange('s1_duration', e.target.value)} style={styles.select}>
+              <option value="">-- 請選擇 --</option>
+              <option value="short">短期 (3個月)</option>
+              <option value="medium">中期 (6個月)</option>
+              <option value="long">長期 (12個月+)</option>
+            </select>
+          </div>
+          <div style={styles.formGroup}>
+            <label>廠商名稱 *</label>
+            <input type="text" value={form.s1_name} onChange={e => handleFieldChange('s1_name', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.formGroup}>
+            <label>統一編號</label>
+            <input type="text" value={form.s1_taxid} onChange={e => handleFieldChange('s1_taxid', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.row}>
+            <div style={{ ...styles.formGroup, flex: 1 }}>
+              <label>負責人 *</label>
+              <input type="text" value={form.s1_owner} onChange={e => handleFieldChange('s1_owner', e.target.value)} style={styles.input} />
+            </div>
+            <div style={{ ...styles.formGroup, flex: 1, marginLeft: '10px' }}>
+              <label>聯絡人 *</label>
+              <input type="text" value={form.s1_contact} onChange={e => handleFieldChange('s1_contact', e.target.value)} style={styles.input} />
+            </div>
+          </div>
+          <div style={styles.row}>
+            <div style={{ ...styles.formGroup, flex: 1 }}>
+              <label>聯絡人手機 * (10位數字)</label>
+              <input type="tel" value={form.s1_phone} onChange={e => { const num = e.target.value.replace(/\D/g, '').slice(0, 10); handleFieldChange('s1_phone', num); }} style={styles.input} maxLength="10" />
+            </div>
+            <div style={{ ...styles.formGroup, flex: 1, marginLeft: '10px' }}>
+              <label>LINE 帳號</label>
+              <input type="text" value={form.s1_line} onChange={e => handleFieldChange('s1_line', e.target.value)} style={styles.input} />
+            </div>
+          </div>
+          <div style={styles.formGroup}>
+            <label>Email *</label>
+            <input type="email" value={form.s1_email} onChange={e => handleFieldChange('s1_email', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.row}>
+            <div style={{ ...styles.formGroup, flex: 0.3 }}>
+              <label>郵遞區號</label>
+              <input type="text" value={form.s1_zip} onChange={e => handleFieldChange('s1_zip', e.target.value)} style={styles.input} />
+            </div>
+            <div style={{ ...styles.formGroup, flex: 1, marginLeft: '10px' }}>
+              <label>通訊地址</label>
+              <input type="text" value={form.s1_addr} onChange={e => handleFieldChange('s1_addr', e.target.value)} style={styles.input} />
+            </div>
+          </div>
+          <div style={styles.navigation}>
+            <button onClick={handleNext} style={{ ...styles.btn, ...styles.btnPrimary }}>下一步</button>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div style={styles.section}>
+          <h2>結帳憑證類型</h2>
+          <div style={styles.formGroup}>
+            <label><input type="radio" name="s2_type" value="A" checked={form.s2_type === 'A'} onChange={e => handleFieldChange('s2_type', e.target.value)} /> 發票 (統編 + 營登)</label>
+          </div>
+          <div style={styles.formGroup}>
+            <label><input type="radio" name="s2_type" value="B" checked={form.s2_type === 'B'} onChange={e => handleFieldChange('s2_type', e.target.value)} /> 收據 (統編 + 存摺)</label>
+          </div>
+          <div style={styles.formGroup}>
+            <label><input type="radio" name="s2_type" value="C" checked={form.s2_type === 'C'} onChange={e => handleFieldChange('s2_type', e.target.value)} /> 收據 (存摺影本)</label>
+          </div>
+          {form.s2_type === 'A' && (
+            <div style={styles.formGroup}>
+              <label>統編</label>
+              <input type="text" value={form.s2_taxid} onChange={e => handleFieldChange('s2_taxid', e.target.value)} style={styles.input} />
+            </div>
+          )}
+          <div style={styles.navigation}>
+            <button onClick={handlePrev} style={styles.btn}>上一步</button>
+            <button onClick={handleNext} style={{ ...styles.btn, ...styles.btnPrimary }}>下一步</button>
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div style={styles.section}>
+          <h2>匯款帳號資訊</h2>
+          <div style={styles.formGroup}>
+            <label>銀行名稱 *</label>
+            <input type="text" value={form.s3_bank} onChange={e => handleFieldChange('s3_bank', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.formGroup}>
+            <label>分行名稱</label>
+            <input type="text" value={form.s3_branch} onChange={e => handleFieldChange('s3_branch', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.formGroup}>
+            <label>帳號 *</label>
+            <input type="text" value={form.s3_acct} onChange={e => handleFieldChange('s3_acct', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.formGroup}>
+            <label>戶名 *</label>
+            <input type="text" value={form.s3_holder} onChange={e => handleFieldChange('s3_holder', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.formGroup}>
+            <label>存摺照片</label>
+            <input type="file" accept="image/*" onChange={e => handlePassbookUpload(e.target.files[0])} style={styles.input} />
+            {form.s3_passbook && <p style={styles.uploadedInfo}>✓ 已上傳</p>}
+          </div>
+          <div style={styles.navigation}>
+            <button onClick={handlePrev} style={styles.btn}>上一步</button>
+            <button onClick={handleNext} style={{ ...styles.btn, ...styles.btnPrimary }}>下一步</button>
+          </div>
+        </div>
+      )}
+
+      {step === 4 && (
+        <div style={styles.section}>
+          <h2>品牌介紹</h2>
+          <div style={styles.formGroup}>
+            <label>品牌名稱</label>
+            <input type="text" value={form.s4_brand} onChange={e => handleFieldChange('s4_brand', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.formGroup}>
+            <label>品牌理念</label>
+            <textarea value={form.s4_mission} onChange={e => handleFieldChange('s4_mission', e.target.value)} style={{ ...styles.input, minHeight: '100px' }} />
+          </div>
+          <div style={styles.formGroup}>
+            <label>品牌特色</label>
+            <textarea value={form.s4_feature} onChange={e => handleFieldChange('s4_feature', e.target.value)} style={{ ...styles.input, minHeight: '100px' }} />
+          </div>
+          <div style={styles.formGroup}>
+            <label>官方網站</label>
+            <input type="url" value={form.s4_web} onChange={e => handleFieldChange('s4_web', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.row}>
+            <div style={{ ...styles.formGroup, flex: 1 }}>
+              <label>Facebook</label>
+              <input type="text" value={form.s4_fb} onChange={e => handleFieldChange('s4_fb', e.target.value)} style={styles.input} />
+            </div>
+            <div style={{ ...styles.formGroup, flex: 1, marginLeft: '10px' }}>
+              <label>Instagram</label>
+              <input type="text" value={form.s4_ig} onChange={e => handleFieldChange('s4_ig', e.target.value)} style={styles.input} />
+            </div>
+          </div>
+          <div style={styles.navigation}>
+            <button onClick={handlePrev} style={styles.btn}>上一步</button>
+            <button onClick={handleNext} style={{ ...styles.btn, ...styles.btnPrimary }}>下一步</button>
+          </div>
+        </div>
+      )}
+
+      {step === 5 && (
+        <div style={styles.section}>
+          <h2>商品清冊 (最多 20 項)</h2>
+          {form.s5_items.map((item, index) => (
+            item.name || index < 3 ? (
+              <div key={index} style={{ ...styles.itemCard, marginBottom: '20px' }}>
+                <h4>商品 {index + 1}</h4>
+                <div style={styles.row}>
+                  <div style={{ ...styles.formGroup, flex: 1 }}>
+                    <label>商品名稱</label>
+                    <input type="text" value={item.name} onChange={e => handleItemChange(index, 'name', e.target.value)} style={styles.input} />
+                  </div>
+                  <div style={{ ...styles.formGroup, flex: 1, marginLeft: '10px' }}>
+                    <label>供貨定價</label>
+                    <input type="number" value={item.costPrice} onChange={e => handleItemChange(index, 'costPrice', e.target.value)} style={styles.input} />
+                  </div>
+                </div>
+                <div style={styles.row}>
+                  <div style={{ ...styles.formGroup, flex: 1 }}>
+                    <label>建議零售價</label>
+                    <input type="number" value={item.retailPrice} onChange={e => handleItemChange(index, 'retailPrice', e.target.value)} style={styles.input} />
+                  </div>
+                  <div style={{ ...styles.formGroup, flex: 1, marginLeft: '10px' }}>
+                    <label>單位</label>
+                    <input type="text" value={item.unit} onChange={e => handleItemChange(index, 'unit', e.target.value)} style={styles.input} placeholder="個、組、盒等" />
+                  </div>
+                </div>
+                <div style={styles.formGroup}>
+                  <label>商品照片</label>
+                  <input type="file" accept="image/*" onChange={e => handlePhotoUpload(index, e.target.files[0])} style={styles.input} />
+                  {item.photo && <p style={styles.uploadedInfo}>✓ 已上傳</p>}
+                </div>
+                <div style={styles.row}>
+                  <div style={{ ...styles.formGroup, flex: 1 }}>
+                    <label>有效期限</label>
+                    <select value={item.hasExp} onChange={e => handleItemChange(index, 'hasExp', e.target.value)} style={styles.select}>
+                      <option value="">-- 請選擇 --</option>
+                      <option value="有">有</option>
+                      <option value="無">無</option>
+                    </select>
+                  </div>
+                  {item.hasExp === '有' && (
+                    <div style={{ ...styles.formGroup, flex: 1, marginLeft: '10px' }}>
+                      <label>期限</label>
+                      <input type="text" value={item.retLimit} onChange={e => handleItemChange(index, 'retLimit', e.target.value)} style={styles.input} placeholder="例：6個月" />
+                    </div>
+                  )}
+                </div>
+                <div style={styles.formGroup}>
+                  <label>同意調整售價 (±20%)</label>
+                  <div>
+                    <label style={{ marginRight: '20px' }}>
+                      <input type="radio" name={`adjust_${index}`} value="同意" checked={item.priceAdjust === '同意'} onChange={e => handleItemChange(index, 'priceAdjust', e.target.value)} /> 同意
+                    </label>
+                    <label>
+                      <input type="radio" name={`adjust_${index}`} value="不同意" checked={item.priceAdjust === '不同意'} onChange={e => handleItemChange(index, 'priceAdjust', e.target.value)} /> 不同意
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ) : null
+          ))}
+          <div style={styles.navigation}>
+            <button onClick={handlePrev} style={styles.btn}>上一步</button>
+            <button onClick={handleNext} style={{ ...styles.btn, ...styles.btnPrimary }}>下一步</button>
+          </div>
+        </div>
+      )}
+
+      {step === 6 && (
+        <div style={styles.section}>
+          <h2>切結聲明</h2>
+          <div style={styles.formGroup}>
+            <label>法定代理人/負責人姓名</label>
+            <input type="text" value={form.s6_owner} onChange={e => handleFieldChange('s6_owner', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.formGroup}>
+            <label>公司/工作室名稱</label>
+            <input type="text" value={form.s6_company} onChange={e => handleFieldChange('s6_company', e.target.value)} style={styles.input} />
+          </div>
+          <div style={styles.navigation}>
+            <button onClick={handlePrev} style={styles.btn}>上一步</button>
+            <button onClick={handleNext} style={{ ...styles.btn, ...styles.btnPrimary }}>下一步</button>
+          </div>
+        </div>
+      )}
+
+      {step === 7 && (
+        <div style={styles.section}>
+          <h2>同意並送出</h2>
+          <div style={styles.agreementBox}>
+            <h4>聲明與確認</h4>
+            <ul style={{ lineHeight: '1.8', color: '#666' }}>
+              <li>本人確認上述資料無誤</li>
+              <li>同意 齊力創新管理顧問有限公司 依據簽訂之合約管理商品</li>
+              <li>同意商品售價於 ±20% 範圍內進行調整</li>
+              <li>確認已授權法定代理人簽署本合約</li>
+            </ul>
+          </div>
+          <div style={styles.formGroup}>
+            <label>
+              <input type="checkbox" checked={form.s6_agree} onChange={e => handleFieldChange('s6_agree', e.target.checked)} />
+              我同意上述所有聲明
+            </label>
+          </div>
+          <div style={styles.navigation}>
+            <button onClick={handlePrev} style={styles.btn}>上一步</button>
+            <button onClick={() => { handleSubmit(); }} disabled={!form.s6_agree} style={{ ...styles.btn, ...styles.btnPrimary, opacity: form.s6_agree ? 1 : 0.5 }}>
+              送出資料
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 8 && (
+        <div style={styles.section}>
+          <div style={{ textAlign: 'center' }}>
+            <h2>✓ 感謝您！</h2>
+            <p>您的資料已成功提交。</p>
+            <p style={{ color: '#666', marginTop: '20px' }}>
+              我們會盡快與您聯繫，確認進駐事宜。
+            </p>
+            <button onClick={() => { downloadCSV(); }} style={{ ...styles.btn, ...styles.btnPrimary, marginTop: '20px' }}>
+              下載 CSV (備份)
+            </button>
+            <button onClick={() => { setStep(0); setForm({ s1_duration: '', s1_name: '', s1_taxid: '', s1_owner: '', s1_contact: '', s1_phone: '', s1_line: '', s1_email: '', s1_zip: '', s1_addr: '', s2_type: '', s2_taxid: '', s3_bank: '', s3_branch: '', s3_acct: '', s3_holder: '', s3_passbook: '', s4_brand: '', s4_mission: '', s4_feature: '', s4_web: '', s4_fb: '', s4_ig: '', s5_items: Array(20).fill(null).map(() => ({ ...EMPTY_ITEM })), s6_owner: '', s6_company: '', s6_agree: false, }); localStorage.removeItem(DRAFT_KEY); }} style={{ ...styles.btn, marginTop: '10px' }}>
+              新增另一份表單
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div style={styles.progress}>
+        進度: Step {step} / 7
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  container: { maxWidth: '800px', margin: '0 auto', padding: '20px', fontFamily: 'system-ui, sans-serif', backgroundColor: '#fafafa', minHeight: '100vh' },
+  header: { textAlign: 'center', marginBottom: '30px', borderBottom: '3px solid #8B7355', paddingBottom: '20px' },
+  logo: { fontSize: '24px', fontWeight: 'bold', color: '#6B4423', marginBottom: '10px' },
+  intro: { backgroundColor: 'white', padding: '40px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' },
+  section: { backgroundColor: 'white', padding: '30px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' },
+  formGroup: { marginBottom: '20px' },
+  row: { display: 'flex', gap: '10px' },
+  input: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px', fontFamily: 'inherit' },
+  select: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '14px', fontFamily: 'inherit' },
+  btn: { padding: '12px 24px', border: 'none', borderRadius: '4px', fontSize: '14px', cursor: 'pointer', backgroundColor: '#f0f0f0', color: '#333', marginRight: '10px', marginTop: '20px' },
+  btnPrimary: { backgroundColor: '#8B7355', color: 'white' },
+  navigation: { marginTop: '30px', paddingTop: '20px', borderTop: '1px solid #eee' },
+  itemCard: { backgroundColor: '#f9f9f9', padding: '15px', borderRadius: '4px', border: '1px solid #eee' },
+  agreementBox: { backgroundColor: '#f5f5f5', padding: '20px', borderRadius: '4px', marginBottom: '20px', border: '1px solid #ddd' },
+  progress: { textAlign: 'center', color: '#999', fontSize: '12px', marginTop: '40px' },
+  recovery: { backgroundColor: '#fff3cd', padding: '20px', borderRadius: '4px', marginBottom: '20px', border: '1px solid #ffc107' },
+  uploadedInfo: { color: '#28a745', fontSize: '12px', marginTop: '5px' },
+};
+
+export default App;
